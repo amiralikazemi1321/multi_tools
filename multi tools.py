@@ -10,6 +10,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPalette, QColor
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 from openai import OpenAI
 
@@ -71,6 +72,17 @@ def dark_theme():
     p.setColor(QPalette.Text, Qt.white)
     return p
 
+class AIWorker(QThread):
+    finished = pyqtSignal(str)
+
+    def __init__(self, ai, prompt):
+        super().__init__()
+        self.ai = ai
+        self.prompt = prompt
+
+    def run(self):
+        reply = self.ai.ask(self.prompt)
+        self.finished.emit(reply)
 
 # ---------------- MAIN APP ----------------
 class App(QMainWindow):
@@ -271,16 +283,19 @@ class App(QMainWindow):
     # ---------------- AI ----------------
     def send_ai(self):
         msg = self.chat_in.text().strip()
+
         if not msg:
             return
 
         self.chat.append("🧑 " + msg)
         self.chat.append("🤖 ...")
-
-        reply = self.ai.ask(msg)
-
-        self.chat.append("🤖 " + reply + "\n")
         self.chat_in.clear()
+
+        self.chat_in.setEnabled(False)
+
+        self.worker = AIWorker(self.ai, msg)
+        self.worker.finished.connect(self.ai_finished)
+        self.worker.start()
 
     # ---------------- CONFIG ----------------
     def save_config(self):
@@ -347,6 +362,11 @@ class App(QMainWindow):
         if os.path.exists(p):
             return json.load(open(p, "r"))
         return d
+
+    def ai_finished(self, reply):
+        self.chat.append("🤖 " + reply + "\n")
+        self.chat_in.setEnabled(True)
+        self.chat_in.setFocus()
 
 
 # ---------------- RUN ----------------
